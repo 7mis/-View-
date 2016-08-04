@@ -320,3 +320,40 @@
 	3. VDH 处理了拖拽子 View 时的边界越界
 	4. VDH 监听了拖拽子 View 时的变化
 	5. 还可以实现：抽屉拉伸，拖拽结束后子 View 自动归位
+
+
+# 课时2：onMeasure 源码分析 #
+## 1. MeasureSpec ##
+### 1. 基础知识简介 ###
+1. 系统显示一个 View，首先需要通过测量(measure 操作)该 View 来知晓其长和宽从而确定显示该 View 时需要多大的空间
+2. 在测量的过程中 MessureSpec 贯穿全程，发挥着不可或缺的作用
+### 2. 官方文档对 MeasureSpec 的介绍##
+1. MeasureSpec 封装了父布局传递给子布局的要求
+2. MeasureSpec 可以表示宽和高
+3. MeasureSpec 由 size 和 mode 组成
+### 3. MeasureSpec 通常翻译为"测量规格" ###
+1. 高2位代表　SpecMode 即某种测量模式；低30位为 SpecSize 代表在该模式下的规格太小
+2. 通过如下方式分别获取这两个值：
+	1. 获取 SpecSize
+			
+			int specSize = View.MeasureSpec.getSize(measureSpec);
+	2. 获取 SpecMode
+
+	        int specMode = View.MeasureSpec.getMode(measureSpec)
+	3. 通过这两个值生成新的 MeasureSpec
+
+			int measureSpec = View.MeasureSpec.makeMeasureSpec(size, mode);
+#### 1. SpecMode 一共有三种： ####
+1. **MeasureSpec.EXACTLY**
+	1. 父容器已经检测出子 View 所需要的精确大小
+	2. 在该模式下，View 的测量大小即为 SpecSize
+2. **MeasureSpec.AT_MOST**
+	1. 父容器未能检测出子 View 所需要的精确大小
+	2. 但是，指定了一个可用大小即 specSize
+	3. 在该模式下，View 的测量大小不能超过 SpecSize
+3. **MeasureSpec.UNSPECIFIED**
+	1. 父容器不对子容器的大小作限制
+	2. 该模式一般作为 Android 系统内部，或者 ListView 和 ScrollView 等滑动控件
+	3. 在此，不做探讨
+
+#### 2. SpecMode 三种模式，源码分析 ####
