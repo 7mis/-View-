@@ -357,3 +357,334 @@
 	3. 在此，不做探讨
 
 #### 2. SpecMode 三种模式，源码分析 ####
+1. 在 ViewGroup 中测量子 View 时会调用到 measureChildWithMargins() 方法，或者与之类似的方法，源码如下：
+
+		/**
+	     * @param child The child to measure
+	     * @param parentWidthMeasureSpec The width requirements for this view
+	     * @param widthUsed Extra space that has been used up by the parent
+	     *        horizontally (possibly by other children of the parent)
+	     * @param parentHeightMeasureSpec The height requirements for this view
+	     * @param heightUsed Extra space that has been used up by the parent
+	     *        vertically (possibly by other children of the parent)
+	     */
+   		 protected void measureChildWithMargins(View child,//子 View
+		                                           int parentWidthMeasureSpec,// 父容器的宽的 MeasureSpec
+		                                           int widthUsed,//父容器在水平方向已经占用的空间大小
+		                                           int parentHeightMeasureSpec,// 父容器的高的 MeasureSpec
+		                                           int heightUsed//父容器在垂直方向已经占用的空间大小
+		    ) {
+		/**1. 得到子 View 的 layoutParams*/
+        final MarginLayoutParams lp = (MarginLayoutParams) child.getLayoutParams();
+
+       	/**2. 得到子 View 宽的 MeasureSpec
+         * mPaddingLeft 和 mPaddingLeft 表示父容器左右两内侧的 padding
+         * lp.leftMargin 和 lp.rightMargin 表示子 View 左右两外侧的 margin
+         * 这些值都不可以再利用起来布局子 View，
+         * so：这些值得和表示：父容器在水平或垂直方向已被占用的空间
+         * 
+         */
+        final int childWidthMeasureSpec = getChildMeasureSpec(parentWidthMeasureSpec,
+                mPaddingLeft + mPaddingRight + lp.leftMargin + lp.rightMargin
+                        + widthUsed, lp.width);
+
+        /**3. 得到子 View 高的 MeasureSpec*/
+        final int childHeightMeasureSpec = getChildMeasureSpec(parentHeightMeasureSpec,
+                mPaddingTop + mPaddingBottom + lp.topMargin + lp.bottomMargin
+                        + heightUsed, lp.height);
+
+        /**4. 测量子 View*/
+        child.measure(childWidthMeasureSpec, childHeightMeasureSpec);
+	    }
+
+2. 通过这些参数可以看出，该方法要测量子 View 传进来的参数却包含：
+	1. 父容器的宽的 MeasureSpec
+	2. 父容器在水平方向已经占用的空间大小
+	3. 父容器的高的 MeasureSpec
+	4. 父容器在垂直方向已经占用的空间大小
+
+	这在一定程度上体现了：父 View 在一定程度上影响着子 View 的 Mea 的生成
+
+3. 该方法的四步操作如上注释，第二步和第三步都调用到了 getChildMeasureSpec()
+4. getChildMeasureSpec() 方法内部分析:
+
+		 /**
+	     * @param spec The requirements for this view
+	     * @param padding The padding of this view for the current dimension and
+	     *        margins, if applicable
+	     * @param childDimension How big the child wants to be in the current
+	     *        dimension
+	     * @return a MeasureSpec integer for the child
+	     */
+	    public static int getChildMeasureSpec(int spec, //父容器的宽或高的 MeasureSpec
+	                                          int padding, // 父容器在垂直方向或者水平方向已被占用的空间
+	                                          int childDimension //
+	    ) {
+	
+	
+	
+	
+	        /**得到父容器的 specMode*/
+	        int specMode = MeasureSpec.getMode(spec);
+	
+	        /**得到父容器的 specSize*/
+	        int specSize = MeasureSpec.getSize(spec);
+	
+	        /**得到父容器在水平方向或垂直方向可用的最大空间值*/
+	        int size = Math.max(0, specSize - padding);
+	
+	        int resultSize = 0;
+	        int resultMode = 0;
+	
+	        /**确定子 View 的 specMode 和 specSize
+	         * ----------------------------------
+	         * 该 switch 语句的判断条件就是父 View 的 specMode,
+	         * 在此，根据父 View 的 specMode 的不同来决定子 View 的 specMode 和 specSize
+	         */
+	        switch (specMode) {
+	            /**
+	             * 第一个 if：
+	             *      childDimension >= 0 是什么？还有 < 0 的情况？
+	             *      注意两个系统常量:
+	             *      LayoutParams.MATCH_PARENT = -1,
+	             *      LayoutParams.WRAP_CONTENT = -2
+	             *      所以，在此处的代码 >= 0 ,表示：
+	             *          1. 子 View 的宽或高不是 match_parent,也不是wrap_content
+	             *          2. 而是一个具体的数值，比如说：100px
+	             *          3. 那么子 View 的 size 就是 childDimension
+	             *          4. 子 View 的 mode 也为 MeasureSpec.EXACTLY
+	             *          5. 即：
+	             *              resultSize = childDimension;
+	             *              resultMode = MeasureSpec.EXACTLY;
+	             *
+	             * 第一个 else if:
+	             *      表示子 View 的宽或高是 layoutParams.MATCH_PARENT
+	             *      那么，子 View 的 size 就是 父容器在水平方向或垂直方向的最大空间值，即：size
+	             *      子 View 的 mode 也为父容器的 mode， 即：
+	             *          resultSize = size;
+	             *          resultMode = MeasureSpec.EXACTLY;
+	             *
+	             * 第二个 else if:
+	             *      表示子 View 的宽或高是 LayoutParams.WRAP_CONTENT
+	             *      那么：子 View 的 size 就是父容器在水平方向或垂直方向的最大空间值，即：size
+	             *      子 View 的 mode 为 MeasureSpec.AT_MOST,即：
+	             *          resultSize = size;
+	             *          resultMode = MeasureSpec.AT_MOST;
+	             *
+	             */
+	            case MeasureSpec.EXACTLY:
+	                if (childDimension >= 0) {
+	                    resultSize = childDimension;
+	                    resultMode = MeasureSpec.EXACTLY;
+	                } else if (childDimension == LayoutParams.MATCH_PARENT) {
+	                    // Child wants to be our size. So be it.
+	                    resultSize = size;
+	                    resultMode = MeasureSpec.EXACTLY;
+	                } else if (childDimension == LayoutParams.WRAP_CONTENT) {
+	                    // Child wants to determine its own size. It can't be
+	                    // bigger than us.
+	                    resultSize = size;
+	                    resultMode = MeasureSpec.AT_MOST;
+	                }
+	                break;
+	
+	            // Parent has imposed a maximum size on us
+	            case MeasureSpec.AT_MOST:
+	                if (childDimension >= 0) {
+	                    // Child wants a specific size... so be it
+	                    resultSize = childDimension;
+	                    resultMode = MeasureSpec.EXACTLY;
+	                } else if (childDimension == LayoutParams.MATCH_PARENT) {
+	                    // Child wants to be our size, but our size is not fixed.
+	                    // Constrain child to not be bigger than us.
+	                    resultSize = size;
+	                    resultMode = MeasureSpec.AT_MOST;
+	                } else if (childDimension == LayoutParams.WRAP_CONTENT) {
+	                    // Child wants to determine its own size. It can't be
+	                    // bigger than us.
+	                    resultSize = size;
+	                    resultMode = MeasureSpec.AT_MOST;
+	                }
+	                break;
+	
+	            // Parent asked to see how big we want to be
+	            case MeasureSpec.UNSPECIFIED:
+	                if (childDimension >= 0) {
+	                    // Child wants a specific size... let him have it
+	                    resultSize = childDimension;
+	                    resultMode = MeasureSpec.EXACTLY;
+	                } else if (childDimension == LayoutParams.MATCH_PARENT) {
+	                    // Child wants to be our size... find out how big it should
+	                    // be
+	                    resultSize = View.sUseZeroUnspecifiedMeasureSpec ? 0 : size;
+	                    resultMode = MeasureSpec.UNSPECIFIED;
+	                } else if (childDimension == LayoutParams.WRAP_CONTENT) {
+	                    // Child wants to determine its own size.... find out how
+	                    // big it should be
+	                    resultSize = View.sUseZeroUnspecifiedMeasureSpec ? 0 : size;
+	                    resultMode = MeasureSpec.UNSPECIFIED;
+	                }
+	                break;
+	        }
+	        return MeasureSpec.makeMeasureSpec(resultSize, resultMode);
+	    }
+
+	- 至此，我们可以清楚的看到：
+		1. 子 View 的 MeasureSpec 由其父容器的 MeasureSpec 和该子 View 本身的布局参数 LayoutParams 共同决定
+		2. 在此经过测量得出的子 View 的 MeasureSpec 是系统给出的一个期望值(参考值)
+		3. 我们也可摒弃系统的这个测量流程，直接调用 setMeasuredDimension() 设置子View的宽和高的测量值。、
+
+	- 对以上分析 MeasureSpec 的生成的表格规整
+
+		![](1.png)
+
+	- 在哪些具体的情况下子 View 的 SpecMode 为 MeasureSpec.EXACTLY ?
+		1. 子 View 的 LayoutParams 的宽(高)采用具体的值(如：100px)时；
+			- 那么该子 View 的大小是非常明确的，都已经用到了具体的 px 值指定的地步了
+			- 那么此时不管父容器的 specMode 是什么，系统返回给该子 View 的 specMode 总是 MeasureSpec.EXACTLY
+			- 并且，系统返回给该子 View 的 SpecSize 就是子 View 自己指定的大小(childSize)
+
+		2. 子 View 的 LayoutParams 的宽(高)采用 match_parent 并且父容器的 MeasureSpec 为 MeasureSpec.EXACLTY 时：
+			- 此时，说明子 View 的大小还是挺明确的，就是要和父容器一样大
+			- 即：父容器要怎样，子 View 就怎样
+			- so：系统返回给该子 View 的 specMode 九尾 MeasureSpec.EXACTLY 和父容器一样
+			- 系统返回给该子 View 的 SpecSize 就为该父容器剩余空间大小(parentLeftSize)，即为父容器的剩余大小
+
+	- 在哪些具体的情况下子 View 的 SpecMode 为 MeasureSpec.AT_MOST ?
+		1. 子 View 的 LayoutParams 的宽(高)采用 match_parent 并且父容器的 MeasureSpec 为 MeasureSpec.AT_MOST
+			- 这时候说明子 View 的大小还是挺明确的，就是要和父容器一样大
+			- 直白说：父容器要怎样子 View 就怎样
+			- 但，此时父容器的大小不是很明确其 MeasureSpec 为 MeasureSpec.AT_MOST
+			- 那么，系统返回给该子 View 的 specMode 就为 MeasureSpec.AT_MOST 和父容器一样
+			- 系统返回给该子 View 的 specSize 就为该父容器剩余空间的大小(parentLeftSize),即为父容器的剩余大小
+
+		2. 子 View 的 LayoutParams 的宽(高)采用 wrap_content 并且父容器的 MeasureSpec 为 MeasureSpec.EXACTLY 时：
+			- 子 View 的 LayoutParams 的宽(高)采用 wrap_content 时说明这个子 View 的宽高并不明确，要视 content 而定
+			- 这时如果父容器的 MeasureSpec 为 MeasureSpec.EXACTLY 即父容器时一个精确模式
+			- 就是：子 View 的大小是不确定的，但父容器的大小是确定的，
+			- 那么：系统返回给该子 View 的 specMode 也就是不确定的，即为 MeasureSpec.AT_MOST
+			- 系统返回给该子 View 的 specSize 就为该父容器剩余空间的大小(parentLeftSize)
+
+		3. 子 View 的 LayoutParams 的宽(高)采用 wrap_content 并且父容器的 MeasureSpec 为 MeasureSpec.AT_MOST 时：
+			- 子 View 的宽(高)不确定，父容器的宽高也不确定
+			- 那么系统返回给该子 View 的 specMode 也就是不确定的，即为：MeasureSpec.AT_MOST
+			- 系统返回给该子 View 的 specSize 就为该父容器剩余空间的大小(parentLeftSize)
+
+	- 在哪些具体的情况下子 View 的 SpecMode 为 MeasureSpec.UNSPECIFIED ?
+		1. 在实际开发中很少用到
+		2. 略过
+
+4. 以上讨论的是:measureChildWithMargins() 调用 getChildMeasureSpec()
+5. 另一种常见的操作 measureChilld() 调用 getChildMeasureSpec()
+
+#### 2. measureChildWithMargins() 和 measureChild() 有什么相同点和区别 ####
+1. measureChildMargins() 和 measChild() 均用来测量子 View 的大小
+2. 两者调用 getChildMeasureSpec() 均要计算父 View 已占空间
+3. 在 measureChild() 计算父 View 所占空间为： mPaddingLeft + mPaddingRight，即：父容器左右两侧的 padding 值之和
+4. 在 measureChildWithMargins() 计算父 View 所占用空间为：mPaddingLeft + mPaddingRight + lp.leftMargin + lp.rightMargin+ widthUsed
+	- 除了父容器左右两侧的 padding 值之和
+	- 还包括了子 View 左右两侧之和 (lp.leftMargin + lp.rightMargin)
+	- 因为，这两部分也是不能用来摆放子 View 的，应算作父 View 已经占用的空间
+
+5. 总结：**从方法名 measureChildWithMargins 也可以看出来他时考虑了子 View 的 margin 所占空间的**
+
+## 2. 搞懂 MeasureSpec ，真正进入到 View 的 onMeasure() 源码分析 ##
+1. onMeasure() 源码如下：
+	
+		 /**
+	     * @param widthMeasureSpec
+	     * @param heightMeasureSpec
+	     */
+	    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+	        setMeasuredDimension(getDefaultSize(getSuggestedMinimumWidth(), widthMeasureSpec),
+	                getDefaultSize(getSuggestedMinimumHeight(), heightMeasureSpec));
+    }
+2. onMeasure() 源码流程：
+	1. 在 onMeasure 调用 setMeasuredDimension() 设置 View 的宽和高
+	2. 在 setMeasuredDimension() 中调用 getDefaultSize() 获取 View 的宽和高
+	3. 在 getDefaultSize() 中又会调用到 getSuggestedMinimumWidth() 或 getSuggestedMinimumHeight() 获取到 View 的宽和高的最小值
+
+3. onMeasure() 调用顺序：
+	
+	![](2.png)
+
+## 3. 倒叙分析以上几个方法的源码： ##
+### 1. getSuggestedMinimumWidth() 的源码 ###
+
+	protected int getSuggestedMinimumWidth() {
+        return (mBackground == null) ? mMinWidth : max(mMinWidth, mBackground.getMinimumWidth());
+    }
+
+1. 该 View 是否有背景(mBackground == null)
+	1. 若没有背景：
+		- 那么该 MinWidth 为 View 本身的最小宽度 即：mMinWidth
+		- 有两种方法可以设置该 mMinWidth 的值
+			1. XML 布局文件中定义 mMinWidth
+			2. 调用 View 的 setMinmunWidth() 方法为该值赋值
+
+	2. 若该 View 有背景：
+		- 那么该 Minimun 为 View 本身最小宽度 和 View 背景的最小宽度的最大值
+
+### 2. getDefaultSize() 的源码 ###
+
+	public static int getDefaultSize(int size, int measureSpec) {
+        int result = size;
+        int specMode = MeasureSpec.getMode(measureSpec);
+        int specSize = MeasureSpec.getSize(measureSpec);
+
+        switch (specMode) {
+        case MeasureSpec.UNSPECIFIED:
+            result = size;
+            break;
+        case MeasureSpec.AT_MOST:
+        case MeasureSpec.EXACTLY:
+            result = specSize;
+            break;
+        }
+        return result;
+    }
+
+1. 该方法用于获取 View 的宽或高的大小
+2. 参数 size，就是调用 getSuggestedMinimumWidth() 方法获得的 View 的宽或高的最小值
+3. 从 switch 中可以看出，返回值有两种
+	1. measureSpec 的 SpecMode 为 MeasureSpec.UNSPECIFIED
+		- 该情况下 getDefaultSize() 的返回值就是该子 View 的 measureSpec 的 specSize
+		- 该情况可不做考虑
+
+	2. **在 measure 阶段 View 的宽和高由其 measureSpec 中的 specSize 决定！！！**
+
+**4. 问题：**
+
+- 如果子 View 在 XML 布局文件中对于大小的设置采用 wrap_content：
+- 那么，不管父 View 的 specMode 是 EXACTLY 还是 AT_MOST对于子 View 而言;
+- 系统给他设置的 specMode 都是 MeasureSpec.AT_MOST
+- 并且其大小都是 parentLeftSize 即：父 View 目前剩余的可用空间
+- 这时，wrap_content 就是去了原本的意义，变成了 match_parent 一样了
+
+**5. so：在自定义 View 重写 onMeasure() 的过程中应该手动处理 View 的宽或高为 wrap_content**
+
+
+### 3. setMeasuredDimension() 的源码 ###
+	
+	protected final void setMeasuredDimension(int measuredWidth, int measuredHeight) {
+	        boolean optical = isLayoutModeOptical(this);
+	        if (optical != isLayoutModeOptical(mParent)) {
+	            Insets insets = getOpticalInsets();
+	            int opticalWidth  = insets.left + insets.right;
+	            int opticalHeight = insets.top  + insets.bottom;
+	
+	            measuredWidth  += optical ? opticalWidth  : -opticalWidth;
+	            measuredHeight += optical ? opticalHeight : -opticalHeight;
+	        }
+	        setMeasuredDimensionRaw(measuredWidth, measuredHeight);
+	    }
+	
+	private void setMeasuredDimensionRaw(int measuredWidth, int measuredHeight) {
+	        mMeasuredWidth = measuredWidth;
+	        mMeasuredHeight = measuredHeight;
+	
+	        mPrivateFlags |= PFLAG_MEASURED_DIMENSION_SET;
+	    }
+
+1. 经过前面一系列的操作，终于得到了 View 的宽高
+2. 在此调用 setMeasuredDimension() 设置 View 的宽和高的测量值
